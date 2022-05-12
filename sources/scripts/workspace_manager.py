@@ -65,19 +65,37 @@ def stage_run(workspace_id, assume_role_arn, role_session_name, api_token):
     )
     run_id = terraform.create_run(workspace_id, cv_id, api_token)
     print("Successfully created run: {}".format(run_id))
-    terraform.wait_to_stabilize(
+    success_states = [
+        # changes applied successfully
+        "applied",
+
+        # plan finished successfully and did not indicate any changes
+        "planned_and_finished"
+    ]
+    failure_states = [
+        # sentinel policy soft fail
+        "policy_override",
+
+        # run is rejected by a user
+        "discarded",
+
+        # error on fetch, plan, or apply
+        "errored",
+
+        # run canceled by a user
+        "canceled",
+        "force_canceled"
+    ]
+    status = terraform.wait_to_stabilize(
         "runs",
         run_id,
-        [
-            "planned",
-            "applied",
-            "cost_estimated",
-            "planned_and_finished",
-            "errored",
-            "policy_checked",
-        ],
+        success_states + failure_states,
         api_token,
     )
+    if status in failure_states:
+        raise Exception(
+            f'Run {run_id} in workspace {workspace_id} is in {status} status'
+        )
     return run_id
 
 
